@@ -45,7 +45,7 @@ function showMessage(sender, message, time) {
     const div = document.createElement('div');
     div.className = `d-flex ${isMe ? 'justify-content-end' : 'justify-content-start'} mb-3`;
     div.innerHTML = `
-        <div class="${isMe ? 'bg-primary text-white' : 'bg-white'} rounded-4 px-3 py-2 shadow-sm" style="max-width: 70%;">
+        <div class="${isMe ? 'bg-primary text-white' : 'bg-white'} rounded-4 px-3 py-2 shadow-sm fade-in" style="max-width: 70%;">
             <p class="mb-1">${message}</p>
             <small class="opacity-75">${time}</small>
         </div>

@@ -14,9 +14,9 @@
                             onclick="chat('{{ user.name }}','{{user.id}}'); return false;">
                             <div class="d-flex align-items-center">
                                 <div class="flex-shrink-0">
-                                    <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center"
+                                    <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center" id="dp"
                                         style="width: 48px; height: 48px;">
-                                        <i class="fa-solid fa-user"></i>
+                                        <i class="fa-solid fa-user" ></i>
                                     </div>
                                 </div>
                                 <div class="flex-grow-1 ms-3">
@@ -40,7 +40,7 @@
                 </div>
 
                 <!-- Chat screen -->
-                <div id="chatScreen" class="d-none d-flex flex-column h-100">
+                <div id="chatScreen" class="d-none d-flex flex-column h-100 fade-in">
                     <!-- Chat header -->
                     <div class="bg-primary text-white p-3 shadow-sm">
                         <div class="d-flex align-items-center">

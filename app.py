@@ -9,7 +9,7 @@ app = Flask(__name__)
 app.secret_key = "hello"
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.sqlite3'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.permanent_session_lifetime = timedelta(minutes=5)
+app.permanent_session_lifetime = timedelta(days=5)
 
 db = SQLAlchemy(app)
 socketio = SocketIO(app)
