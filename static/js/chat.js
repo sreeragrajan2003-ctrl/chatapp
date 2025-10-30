@@ -1,55 +1,55 @@
 const socket = io();
-let current_reciever = null;
 let current_id = null;
+let current_user_id = null;
 
-socket.on('connect', function() {
-    console.log('Connected to server');
+socket.on('connect', () => {
+    console.log('Connected');
     socket.emit('join', {});
 });
 
-function chat(username, id) {
-    current_reciever = username;
+async function chat(username, id) {
     current_id = id;
+    console.log('Chat opened with:', username, 'ID:', id);
     
-    console.log('Opening chat with:', username, 'ID:', id);
-    
-    // Hide welcome screen
     document.getElementById("welcomeScreen").classList.add("d-none");
-
-    // Show chat screen
-    const chatScreen = document.getElementById("chatScreen");
-    chatScreen.classList.remove("d-none");
-
-    // Set chat header name
+    document.getElementById("chatScreen").classList.remove("d-none");
     document.getElementById("chatWith").innerText = username;
-
-    // Clear chat box
-    const chatBox = document.getElementById("chatMessage");
-    chatBox.innerHTML = '';
+    document.getElementById("chatMessage").innerHTML = '';
     
-    //TODO: Load old messages between these users
+    // Load old messages
+    const res = await fetch(`/get_messages/${id}`);
+    const data = await res.json();
+    console.log('Loaded messages:', data);
+    current_user_id = data.current_user;
+    
+    data.messages.forEach(m => showMessage(m.sender, m.message, m.timestamp));
 }
 
 socket.on('message', (data) => {
-    console.log('Message received:', data);
-    appendMessage(data.sender, data.message, data.timestamp);
+    showMessage(data.sender, data.message, data.timestamp);
 });
 
-document.getElementById('messageForm').addEventListener('submit', function(e) {
+document.getElementById('messageForm').onsubmit = (e) => {
     e.preventDefault();
+    const input = document.getElementById('typeMessage');
+    const msg = input.value.trim();
     
-    const typemessage = document.getElementById('typeMessage');
-    const message = typemessage.value.trim();
-    
-    console.log('Sending message:', message, 'to:', current_id);
-    
-    if (message && current_id) {
-        socket.send({
-            reciever: current_id,
-            message: message
-        });
-        
-        typemessage.value = '';
+    if (msg && current_id) {
+        socket.send({reciever: current_id, message: msg});
+        input.value = '';
     }
-});
+};
 
+function showMessage(sender, message, time) {
+    const isMe = (sender == current_user_id);
+    const div = document.createElement('div');
+    div.className = `d-flex ${isMe ? 'justify-content-end' : 'justify-content-start'} mb-3`;
+    div.innerHTML = `
+        <div class="${isMe ? 'bg-primary text-white' : 'bg-white'} rounded-4 px-3 py-2 shadow-sm" style="max-width: 70%;">
+            <p class="mb-1">${message}</p>
+            <small class="opacity-75">${time}</small>
+        </div>
+    `;
+    document.getElementById('chatMessage').appendChild(div);
+    document.getElementById('chatMessage').scrollTop = 999999;
+}

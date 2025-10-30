@@ -1,7 +1,9 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 from datetime import timedelta,datetime
 from flask_sqlalchemy import SQLAlchemy
-from flask_socketio import SocketIO, send, join_room, leave_room
+from flask_socketio import SocketIO, send, join_room
+from werkzeug.security import generate_password_hash,check_password_hash
+
 
 app = Flask(__name__)
 app.secret_key = "hello"
@@ -59,8 +61,8 @@ def register():
         if existing_user:
             flash("Email already registered!", "warning")
             return redirect(url_for('register'))
-
-        new_user = Users(name, email, password)
+        hash=generate_password_hash(password)
+        new_user = Users(name, email, hash)
         db.session.add(new_user)
         db.session.commit()
         flash("Registration successful! Please login.", "success")
@@ -71,6 +73,7 @@ def register():
 @app.route('/', methods=["GET", "POST"])
 @app.route('/login', methods=['POST', 'GET'])
 def login():
+    
     if request.method == 'POST':
         email = request.form["email"]
         password = request.form["password"]
@@ -81,7 +84,7 @@ def login():
             flash("Mail ID wrong!", "warning")
             return redirect(url_for('login'))
         else:
-            if existing_user.password == password:
+            if check_password_hash(existing_user.password,password):
                 session["user"] = existing_user.name
                 session["user_id"]=existing_user.id
                 flash("Login successful!", "success")
@@ -110,6 +113,49 @@ def logout():
     flash("Logged out successfully!", "success")
     return redirect(url_for('login'))
 
+@app.route('/delete_user')
+def delete_user():
+    username = session.get("user")
+    if not username:
+        flash("You must be logged in to delete your account.", "danger")
+        return redirect(url_for('login'))
+
+    # Find the user by username
+    user = Users.query.filter_by(name=username).first()
+
+    if user:
+        
+        # Delete all messages sent or received by this user
+        Messages.query.filter(
+            (Messages.sender == user.id)|(Messages.receiver == user.id)
+        ).delete()
+
+        # Delete the user account
+        db.session.delete(user)
+        db.session.commit()
+
+        # Clear session
+        session.pop("user", None)
+        flash("Your account and all your messages have been deleted.", "info")
+        return redirect(url_for('register'))
+    else:
+        flash("User not found!", "warning")
+        return redirect(url_for('login'))
+
+
+@app.route('/get_messages/<int:receiver_id>')
+def get_messages(receiver_id):
+    user_id = session.get("user_id")
+    
+    messages = Messages.query.filter(
+        ((Messages.sender == str(user_id)) & (Messages.receiver == str(receiver_id))) |
+        ((Messages.sender == str(receiver_id)) & (Messages.receiver == str(user_id)))
+    ).order_by(Messages.timestamp.asc()).all()
+    
+    return {
+        "messages": [{'sender': m.sender, 'message': m.message, 'timestamp': m.timestamp.strftime('%H:%M')} for m in messages],
+        "current_user": str(user_id)
+    }
 
 # -------------------- SOCKET EVENTS --------------------
 
