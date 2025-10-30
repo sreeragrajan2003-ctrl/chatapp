@@ -1,1 +1,15 @@
+# Ignore virtual environment
 myvenv/
+venv/
+.env
+__pycache__/
+*.pyc
+
+# Ignore database and cache
+*.sqlite3
+instance/
+*.log
+
+# Ignore system files
+.DS_Store
+.vscode/
