@@ -32,12 +32,7 @@
                  <a href="{{ url_for('delete_user') }}" class="btn btn-danger btn-sm rounded-pill px-3 shadow-sm" onclick="return confirm('Are you sure you want to delete your account? This cannot be undone.');">
                     <i class="fa-solid fa-trash-can me-1"></i> Delete
                 </a>
-                <!-- <form action="{{ url_for('delete_user') }}" method="POST"
-                    onsubmit="return confirm('Are you sure you want to delete your account? This cannot be undone.');">
-                    <button type="submit" class="btn btn-danger btn-sm rounded-pill px-3 shadow-sm">
-                        <i class="fa-solid fa-trash-can me-1"></i> Delete
-                    </button>
-                </form> -->
+                
             </div>
             {% endif %}
 
