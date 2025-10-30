@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Home{% endblock %}
+{% block content %}
+
+<div class="container-fluid p-3" style="height: calc(100vh - 76px);">
+    <div class="card shadow-lg border-0 h-100">
+        <div class="row g-0 h-100">
+            <!-- LEFT SIDE – User list -->
+            <div class="col-md-4 col-lg-3 border-end bg-light">
+                <div class="overflow-auto h-100">
+                    <div class="list-group list-group-flush">
+                        {% for user in users %}
+                        <a href="#" class="list-group-item list-group-item-action border-0 py-3" onclick="chat('{{ user.name }}','{{user.id}}'); return false;">
+                            <div class="d-flex align-items-center">
+                                <div class="flex-shrink-0">
+                                    <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                                        <i class="fa-solid fa-user"></i>
+                                    </div>
+                                </div>
+                                <div class="flex-grow-1 ms-3">
+                                    <h6 class="mb-0 fw-bold">{{ user.name }}</h6>
+                                </div>
+                            </div>
+                        </a>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT SIDE – Chat area -->
+            <div class="col-md-8 col-lg-9 d-flex flex-column">
+                <!-- Welcome screen -->
+                <div id="welcomeScreen" class="flex-grow-1 d-flex flex-column align-items-center justify-content-center bg-white">
+                    <i class="fa-regular fa-comments text-primary mb-4" style="font-size: 5rem; opacity: 0.3;"></i>
+                    <h4 class="text-muted">Chat with favourites</h4>
+                    <p class="text-secondary">Choose a contact from the list to start</p>
+                </div>
+
+                <!-- Chat screen -->
+                <div id="chatScreen" class="d-none d-flex flex-column h-100">
+                    <!-- Chat header -->
+                    <div class="bg-primary text-white p-3 shadow-sm">
+                        <div class="d-flex align-items-center">
+                            <div class="rounded-circle bg-white bg-opacity-25 d-flex align-items-center justify-content-center me-3" style="width: 45px; height: 45px;">
+                                <i class="fa-solid fa-user"></i>
+                            </div>
+                            <div>
+                                <h5 class="mb-0 fw-bold" id="chatWith"></h5>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Message area -->
+                    <div id="chatMessage" class="flex-grow-1 p-4 overflow-auto bg-light" style="max-height: calc(100vh - 250px);">
+                        <!-- Messages appear here -->
+                    </div>
+
+                    <!-- Input area -->
+                    <div class="p-3 bg-white border-top">
+                        <form id="messageForm" class="d-flex gap-2">
+                            <input type="text" class="form-control form-control-lg rounded-pill" id="typeMessage" placeholder="Type your message..." required autocomplete="off">
+                            <button type="submit" class="btn btn-primary btn-lg rounded-pill px-4">
+                                <i class="fa-solid fa-paper-plane"></i>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+
+{% endblock %}
