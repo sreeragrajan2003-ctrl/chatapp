@@ -32,7 +32,7 @@ class Messages(db.Model):
     sender = db.Column(db.String(100))
     receiver = db.Column(db.String(100))
     message = db.Column(db.Text)
-    timestamp = db.Column(db.DateTime, default=datetime.now())
+    timestamp = db.Column(db.DateTime, default=lambda: datetime.now())
 
     def __init__(self, sender, receiver, message):
         self.sender = sender
@@ -42,7 +42,7 @@ class Messages(db.Model):
 
 # -------------------- ROUTES --------------------
 
-@app.route('/', methods=["GET", "POST"])
+
 @app.route('/register', methods=["GET", "POST"])
 def register():
     if request.method == "POST":
@@ -68,7 +68,7 @@ def register():
 
     return render_template("register.html")
 
-
+@app.route('/', methods=["GET", "POST"])
 @app.route('/login', methods=['POST', 'GET'])
 def login():
     if request.method == 'POST':
@@ -103,6 +103,14 @@ def home():
     return render_template('home.html', users=users)
 
 
+@app.route('/logout')
+def logout():
+    session.pop("user", None)
+    session.pop("user_id", None)
+    flash("Logged out successfully!", "success")
+    return redirect(url_for('login'))
+
+
 # -------------------- SOCKET EVENTS --------------------
 
 @socketio.on('connect')
@@ -112,10 +120,6 @@ def handle_connect():
 
 @socketio.on('join')
 def handle_join(data):
-    # username=session.get("user")
-    
-    
-    # room=get_room_name(username,reciever)
     join_room(str(session['user_id']))
 
     
@@ -156,4 +160,3 @@ if __name__ == '__main__':
     with app.app_context():
         db.create_all()
     socketio.run(app, debug=True)
-

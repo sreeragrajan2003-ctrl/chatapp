@@ -16,6 +16,17 @@
                 <i class="fa-solid fa-comments me-2" style="font-size: 2.2rem;"></i>
                 <span style="text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">ch@t me</span>
             </span>
+            
+            {% if session.user %}
+            <div class="d-flex align-items-center gap-3">
+                <span class="text-white fw-semibold">
+                    <i class="fa-solid fa-user-circle me-2"></i>{{ session.user }}
+                </span>
+                <a href="{{ url_for('logout') }}" class="btn btn-light btn-sm rounded-pill px-3 shadow-sm">
+                    <i class="fa-solid fa-right-from-bracket me-1"></i> Logout
+                </a>
+            </div>
+            {% endif %}
         </div>
     </nav>
     
