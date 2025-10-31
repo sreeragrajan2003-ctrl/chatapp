@@ -12,6 +12,13 @@ socket.on('user_status', (data) => {
     updateUserStatus(data.user_id, data.is_online);
 });
 
+// Listen for unread message updates
+socket.on('unread_update', async (data) => {
+    console.log('Unread update received:', data);
+    // Update unread count for the sender
+    await updateUnreadBadge(data.sender_id);
+});
+
 async function chat(username, id, isOnline) {
     current_id = id;
     console.log('Chat opened with:', username, 'ID:', id, 'Online:', isOnline);
@@ -38,6 +45,12 @@ async function chat(username, id, isOnline) {
     current_user_id = data.current_user;
     
     data.messages.forEach(m => showMessage(m.sender, m.message, m.timestamp));
+    
+    // Clear unread badge for this user
+    clearUnreadBadge(id);
+    
+    // Notify server that messages are read
+    socket.emit('mark_read', { sender_id: id });
 }
 
 function updateUserStatus(userId, isOnline) {
@@ -66,8 +79,50 @@ function updateUserStatus(userId, isOnline) {
     }
 }
 
+async function updateUnreadBadge(senderId) {
+    // Don't update if currently chatting with this user
+    if (current_id == senderId) {
+        return;
+    }
+    
+    try {
+        const res = await fetch(`/get_unread_count/${senderId}`);
+        const data = await res.json();
+        const badge = document.getElementById(`unread-badge-${senderId}`);
+        
+        if (badge) {
+            if (data.unread_count > 0) {
+                badge.textContent = data.unread_count;
+                badge.classList.remove('d-none');
+            } else {
+                badge.classList.add('d-none');
+            }
+        }
+    } catch (error) {
+        console.error('Error updating unread badge:', error);
+    }
+}
+
+function clearUnreadBadge(userId) {
+    const badge = document.getElementById(`unread-badge-${userId}`);
+    if (badge) {
+        badge.classList.add('d-none');
+        badge.textContent = '0';
+    }
+}
+
 socket.on('message', (data) => {
     showMessage(data.sender, data.message, data.timestamp);
+    
+    // If message is from someone else and not in current chat, update badge
+    if (data.sender != current_user_id && data.sender != current_id) {
+        updateUnreadBadge(data.sender);
+    }
+    
+    // If message is from current chat partner, mark as read
+    if (data.sender == current_id) {
+        socket.emit('mark_read', { sender_id: current_id });
+    }
 });
 
 document.getElementById('messageForm').onsubmit = (e) => {

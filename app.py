@@ -22,7 +22,7 @@ class Users(db.Model):
     name = db.Column(db.String(100))
     email = db.Column(db.String(100), unique=True)
     password = db.Column(db.String(100))
-    is_online = db.Column(db.Boolean, default=False, nullable=False)  # Fixed typo
+    is_online = db.Column(db.Boolean, default=False, nullable=False)
 
     def __init__(self, name, email, password):
         self.name = name
@@ -36,6 +36,7 @@ class Messages(db.Model):
     receiver = db.Column(db.String(100))
     message = db.Column(db.Text)
     timestamp = db.Column(db.DateTime, default=lambda: datetime.now())
+    is_read = db.Column(db.Boolean, default=False, nullable=False)
 
     def __init__(self, sender, receiver, message):
         self.sender = sender
@@ -108,8 +109,25 @@ def home():
         return redirect(url_for('login'))
 
     existing_user = session.get("user")
+    user_id = session.get("user_id")
     users = Users.query.filter(Users.name != existing_user).all()
-    return render_template('home.html', users=users)
+    
+    # Get unread message counts for each user
+    users_with_unread = []
+    for user in users:
+        unread_count = Messages.query.filter_by(
+            sender=str(user.id),
+            receiver=str(user_id),
+            is_read=False
+        ).count()
+        users_with_unread.append({
+            'id': user.id,
+            'name': user.name,
+            'is_online': user.is_online,
+            'unread_count': unread_count
+        })
+    
+    return render_template('home.html', users=users_with_unread)
 
 
 @app.route('/logout')
@@ -161,6 +179,14 @@ def get_messages(receiver_id):
         ((Messages.sender == str(receiver_id)) & (Messages.receiver == str(user_id)))
     ).order_by(Messages.timestamp.asc()).all()
     
+    # Mark messages from this sender as read
+    Messages.query.filter_by(
+        sender=str(receiver_id),
+        receiver=str(user_id),
+        is_read=False
+    ).update({'is_read': True})
+    db.session.commit()
+    
     return {
         "messages": [{'sender': m.sender, 'message': m.message, 'timestamp': m.timestamp.strftime('%H:%M')} for m in messages],
         "current_user": str(user_id)
@@ -173,6 +199,17 @@ def check_status(user_id):
     if user:
         return jsonify({"is_online": user.is_online})
     return jsonify({"is_online": False})
+
+
+@app.route('/get_unread_count/<int:sender_id>')
+def get_unread_count(sender_id):
+    user_id = session.get("user_id")
+    count = Messages.query.filter_by(
+        sender=str(sender_id),
+        receiver=str(user_id),
+        is_read=False
+    ).count()
+    return jsonify({"unread_count": count})
 
 
 # -------------------- SOCKET EVENTS --------------------
@@ -233,6 +270,26 @@ def handle_message(data):
         'reciever': reciever,
         'timestamp': new_message.timestamp.strftime('%H:%M')
     }, to=str(reciever))
+    
+    # Emit unread count update to receiver
+    socketio.emit('unread_update', {
+        'sender_id': userid,
+        'receiver_id': reciever
+    }, to=str(reciever))
+
+
+@socketio.on('mark_read')
+def handle_mark_read(data):
+    user_id = session.get("user_id")
+    sender_id = data.get('sender_id')
+    
+    # Mark all messages from sender as read
+    Messages.query.filter_by(
+        sender=str(sender_id),
+        receiver=str(user_id),
+        is_read=False
+    ).update({'is_read': True})
+    db.session.commit()
 
 
 # -------------------- MAIN --------------------
