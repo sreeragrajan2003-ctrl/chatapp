@@ -1,8 +1,8 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash
-from datetime import timedelta,datetime
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
+from datetime import timedelta, datetime
 from flask_sqlalchemy import SQLAlchemy
-from flask_socketio import SocketIO, send, join_room
-from werkzeug.security import generate_password_hash,check_password_hash
+from flask_socketio import SocketIO, send, join_room, emit
+from werkzeug.security import generate_password_hash, check_password_hash
 
 
 app = Flask(__name__)
@@ -22,6 +22,7 @@ class Users(db.Model):
     name = db.Column(db.String(100))
     email = db.Column(db.String(100), unique=True)
     password = db.Column(db.String(100))
+    is_online = db.Column(db.Boolean, default=False, nullable=False)  # Fixed typo
 
     def __init__(self, name, email, password):
         self.name = name
@@ -61,8 +62,8 @@ def register():
         if existing_user:
             flash("Email already registered!", "warning")
             return redirect(url_for('register'))
-        hash=generate_password_hash(password)
-        new_user = Users(name, email, hash)
+        hash_pwd = generate_password_hash(password)
+        new_user = Users(name, email, hash_pwd)
         db.session.add(new_user)
         db.session.commit()
         flash("Registration successful! Please login.", "success")
@@ -70,11 +71,12 @@ def register():
 
     return render_template("register.html")
 
+
 @app.route('/', methods=["GET", "POST"])
 @app.route('/login', methods=['POST', 'GET'])
 def login():
-    
     if request.method == 'POST':
+        
         email = request.form["email"]
         password = request.form["password"]
     
@@ -84,9 +86,13 @@ def login():
             flash("Mail ID wrong!", "warning")
             return redirect(url_for('login'))
         else:
-            if check_password_hash(existing_user.password,password):
+            if check_password_hash(existing_user.password, password):
+                # Set user as online
+                existing_user.is_online = True
+                db.session.commit()
+                
                 session["user"] = existing_user.name
-                session["user_id"]=existing_user.id
+                session["user_id"] = existing_user.id
                 flash("Login successful!", "success")
                 return redirect(url_for('home'))
             else:
@@ -108,10 +114,18 @@ def home():
 
 @app.route('/logout')
 def logout():
+    user_id = session.get("user_id")
+    if user_id:
+        user = Users.query.get(user_id)
+        if user:
+            user.is_online = False
+            db.session.commit()
+    
     session.pop("user", None)
     session.pop("user_id", None)
     flash("Logged out successfully!", "success")
     return redirect(url_for('login'))
+
 
 @app.route('/delete_user')
 def delete_user():
@@ -120,21 +134,16 @@ def delete_user():
         flash("You must be logged in to delete your account.", "danger")
         return redirect(url_for('login'))
 
-    # Find the user by username
     user = Users.query.filter_by(name=username).first()
 
     if user:
-        
-        # Delete all messages sent or received by this user
         Messages.query.filter(
-            (Messages.sender == user.id)|(Messages.receiver == user.id)
+            (Messages.sender == user.id) | (Messages.receiver == user.id)
         ).delete()
 
-        # Delete the user account
         db.session.delete(user)
         db.session.commit()
 
-        # Clear session
         session.pop("user", None)
         flash("Your account and all your messages have been deleted.", "info")
         return redirect(url_for('register'))
@@ -157,28 +166,55 @@ def get_messages(receiver_id):
         "current_user": str(user_id)
     }
 
+
+@app.route('/check_status/<int:user_id>')
+def check_status(user_id):
+    user = Users.query.get(user_id)
+    if user:
+        return jsonify({"is_online": user.is_online})
+    return jsonify({"is_online": False})
+
+
 # -------------------- SOCKET EVENTS --------------------
 
 @socketio.on('connect')
 def handle_connect():
     if "user" in session:
+        user_id = session.get("user_id")
+        user = Users.query.get(user_id)
+        if user:
+            user.is_online = True
+            db.session.commit()
+            # Broadcast online status to all users
+            emit('user_status', {'user_id': user_id, 'is_online': True}, broadcast=True)
         print(f'{session["user"]} connected')
+
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    if "user" in session:
+        user_id = session.get("user_id")
+        user = Users.query.get(user_id)
+        if user:
+            user.is_online = False
+            db.session.commit()
+            # Broadcast offline status to all users
+            emit('user_status', {'user_id': user_id, 'is_online': False}, broadcast=True)
+        print(f'{session["user"]} disconnected')
+
 
 @socketio.on('join')
 def handle_join(data):
     join_room(str(session['user_id']))
 
-    
 
 @socketio.on('message')
 def handle_message(data):
     userid = session.get("user_id")
     print(userid)
     reciever = data['reciever']
-    
     message_text = data['message']
     
-
     new_message = Messages(userid, reciever, message_text)
     db.session.add(new_message)
     db.session.commit()
@@ -189,15 +225,14 @@ def handle_message(data):
         'message': message_text,
         'reciever': reciever,
         'timestamp': new_message.timestamp.strftime('%H:%M')
-    }, to=room
-    )
+    }, to=room)
+    
     socketio.send({
         'sender': userid,
         'message': message_text,
         'reciever': reciever,
         'timestamp': new_message.timestamp.strftime('%H:%M')
-    }, to=str(reciever)
-    )
+    }, to=str(reciever))
 
 
 # -------------------- MAIN --------------------

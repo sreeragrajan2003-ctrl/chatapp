@@ -11,16 +11,17 @@
                     <div class="list-group list-group-flush">
                         {% for user in users %}
                         <a href="#" class="list-group-item list-group-item-action border-0 py-3"
-                            onclick="chat('{{ user.name }}','{{user.id}}'); return false;">
+                            onclick="chat('{{ user.name }}', '{{user.id}}', {{ 'true' if user.is_online else 'false' }}); return false;">
                             <div class="d-flex align-items-center">
                                 <div class="flex-shrink-0">
                                     <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center" id="dp"
                                         style="width: 48px; height: 48px;">
-                                        <i class="fa-solid fa-user" ></i>
+                                        <i class="fa-solid fa-user"></i>
                                     </div>
                                 </div>
                                 <div class="flex-grow-1 ms-3">
                                     <h6 class="mb-0 fw-bold">{{ user.name }}</h6>
+
                                 </div>
                             </div>
                         </a>
@@ -50,6 +51,7 @@
                             </div>
                             <div>
                                 <h5 class="mb-0 fw-bold" id="chatWith"></h5>
+                                <small id="chatStatus" class="opacity-75"></small>
                             </div>
                         </div>
                     </div>

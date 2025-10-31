@@ -7,14 +7,29 @@ socket.on('connect', () => {
     socket.emit('join', {});
 });
 
-async function chat(username, id) {
+// Listen for user status updates
+socket.on('user_status', (data) => {
+    updateUserStatus(data.user_id, data.is_online);
+});
+
+async function chat(username, id, isOnline) {
     current_id = id;
-    console.log('Chat opened with:', username, 'ID:', id);
+    console.log('Chat opened with:', username, 'ID:', id, 'Online:', isOnline);
     
     document.getElementById("welcomeScreen").classList.add("d-none");
     document.getElementById("chatScreen").classList.remove("d-none");
     document.getElementById("chatWith").innerText = username;
     document.getElementById("chatMessage").innerHTML = '';
+    
+    // Display status in chat header
+    const chatStatusElement = document.getElementById('chatStatus');
+    if (isOnline) {
+        chatStatusElement.innerHTML = '<i class="fa-solid fa-circle" style="font-size: 8px;"></i> Online';
+        chatStatusElement.className = 'opacity-75 text-success';
+    } else {
+        chatStatusElement.innerHTML = '<i class="fa-solid fa-circle" style="font-size: 8px;"></i> Offline';
+        chatStatusElement.className = 'opacity-75 text-secondary';
+    }
     
     // Load old messages
     const res = await fetch(`/get_messages/${id}`);
@@ -23,6 +38,32 @@ async function chat(username, id) {
     current_user_id = data.current_user;
     
     data.messages.forEach(m => showMessage(m.sender, m.message, m.timestamp));
+}
+
+function updateUserStatus(userId, isOnline) {
+    // Update status in user list
+    const statusElement = document.getElementById(`status-${userId}`);
+    if (statusElement) {
+        if (isOnline) {
+            statusElement.innerHTML = '<span class="text-success"><i class="fa-solid fa-circle" style="font-size: 8px;"></i> Online</span>';
+        } else {
+            statusElement.innerHTML = '<span class="text-secondary"><i class="fa-solid fa-circle" style="font-size: 8px;"></i> Offline</span>';
+        }
+    }
+    
+    // Update status in chat header if this is the current chat
+    if (current_id == userId) {
+        const chatStatusElement = document.getElementById('chatStatus');
+        if (chatStatusElement) {
+            if (isOnline) {
+                chatStatusElement.innerHTML = '<i class="fa-solid fa-circle" style="font-size: 8px;"></i> Online';
+                chatStatusElement.className = 'opacity-75 text-success';
+            } else {
+                chatStatusElement.innerHTML = '<i class="fa-solid fa-circle" style="font-size: 8px;"></i> Offline';
+                chatStatusElement.className = 'opacity-75 text-secondary';
+            }
+        }
+    }
 }
 
 socket.on('message', (data) => {
