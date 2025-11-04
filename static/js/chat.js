@@ -3,12 +3,17 @@ let current_id = null;
 let current_user_id = null;
 
 socket.on('connect', () => {
-    console.log('Connected');
+    console.log('Connected to server');
     socket.emit('join', {});
+});
+
+socket.on('disconnect', () => {
+    console.log('Disconnected from server');
 });
 
 // Listen for user status updates
 socket.on('user_status', (data) => {
+    console.log('User status update:', data);
     updateUserStatus(data.user_id, data.is_online);
 });
 
@@ -19,8 +24,28 @@ socket.on('unread_update', async (data) => {
     await updateUnreadBadge(data.sender_id);
 });
 
+// Listen for incoming messages
+socket.on('message', (data) => {
+    console.log('Message received:', data);
+    
+    // Only show message if it's in the current chat
+    if (data.sender == current_id || data.reciever == current_id) {
+        showMessage(data.sender, data.message, data.timestamp);
+    }
+    
+    // If message is from someone else and not in current chat, update badge
+    if (data.sender != current_user_id && data.sender != current_id) {
+        updateUnreadBadge(data.sender);
+    }
+    
+    // If message is from current chat partner, mark as read
+    if (data.sender == current_id) {
+        socket.emit('mark_read', { sender_id: current_id });
+    }
+});
+
 async function chat(username, id, isOnline) {
-    current_id = id;
+    current_id = String(id);
     console.log('Chat opened with:', username, 'ID:', id, 'Online:', isOnline);
     
     document.getElementById("welcomeScreen").classList.add("d-none");
@@ -38,22 +63,28 @@ async function chat(username, id, isOnline) {
         chatStatusElement.className = 'opacity-75 text-secondary';
     }
     
-    // Load old messages
-    const res = await fetch(`/get_messages/${id}`);
-    const data = await res.json();
-    console.log('Loaded messages:', data);
-    current_user_id = data.current_user;
-    
-    data.messages.forEach(m => showMessage(m.sender, m.message, m.timestamp));
-    
-    // Clear unread badge for this user
-    clearUnreadBadge(id);
-    
-    // Notify server that messages are read
-    socket.emit('mark_read', { sender_id: id });
+    try {
+        // Load old messages
+        const res = await fetch(`/get_messages/${id}`);
+        const data = await res.json();
+        console.log('Loaded messages:', data);
+        current_user_id = data.current_user;
+        
+        data.messages.forEach(m => showMessage(m.sender, m.message, m.timestamp));
+        
+        // Clear unread badge for this user
+        clearUnreadBadge(id);
+        
+        // Notify server that messages are read
+        socket.emit('mark_read', { sender_id: String(id) });
+    } catch (error) {
+        console.error('Error loading messages:', error);
+    }
 }
 
 function updateUserStatus(userId, isOnline) {
+    userId = String(userId);
+    
     // Update status in user list
     const statusElement = document.getElementById(`status-${userId}`);
     if (statusElement) {
@@ -80,6 +111,8 @@ function updateUserStatus(userId, isOnline) {
 }
 
 async function updateUnreadBadge(senderId) {
+    senderId = String(senderId);
+    
     // Don't update if currently chatting with this user
     if (current_id == senderId) {
         return;
@@ -111,20 +144,7 @@ function clearUnreadBadge(userId) {
     }
 }
 
-socket.on('message', (data) => {
-    showMessage(data.sender, data.message, data.timestamp);
-    
-    // If message is from someone else and not in current chat, update badge
-    if (data.sender != current_user_id && data.sender != current_id) {
-        updateUnreadBadge(data.sender);
-    }
-    
-    // If message is from current chat partner, mark as read
-    if (data.sender == current_id) {
-        socket.emit('mark_read', { sender_id: current_id });
-    }
-});
-
+// Handle message form submission
 document.getElementById('messageForm').onsubmit = (e) => {
     e.preventDefault();
     const input = document.getElementById('typeMessage');
@@ -137,15 +157,20 @@ document.getElementById('messageForm').onsubmit = (e) => {
 };
 
 function showMessage(sender, message, time) {
+    sender = String(sender);
     const isMe = (sender == current_user_id);
     const div = document.createElement('div');
     div.className = `d-flex ${isMe ? 'justify-content-end' : 'justify-content-start'} mb-3`;
+    
+    // Escape HTML to prevent XSS
+    const escapedMessage = message.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    
     div.innerHTML = `
         <div class="${isMe ? 'bg-primary text-white' : 'bg-white'} rounded-4 px-3 py-2 shadow-sm fade-in" style="max-width: 70%;">
-            <p class="mb-1">${message}</p>
+            <p class="mb-1">${escapedMessage}</p>
             <small class="opacity-75">${time}</small>
         </div>
     `;
     document.getElementById('chatMessage').appendChild(div);
-    document.getElementById('chatMessage').scrollTop = 999999;
+    document.getElementById('chatMessage').scrollTop = document.getElementById('chatMessage').scrollHeight;
 }

@@ -1,9 +1,7 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
-from datetime import timedelta, datetime
-from flask_sqlalchemy import SQLAlchemy
-from flask_socketio import SocketIO, send, join_room, emit
-from werkzeug.security import generate_password_hash, check_password_hash
-
+from flask import Flask, session
+from datetime import timedelta
+from flask_socketio import SocketIO, emit, join_room
+from models import db, Users, Messages
 
 app = Flask(__name__)
 app.secret_key = "hello"
@@ -11,209 +9,20 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.sqlite3'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.permanent_session_lifetime = timedelta(days=5)
 
-db = SQLAlchemy(app)
-socketio = SocketIO(app)
+# Initialize db with app
+db.init_app(app)
+
+socketio = SocketIO(app, cors_allowed_origins="*")
+
+# Register blueprints
+from auth import auth
+from chat import chat
+
+app.register_blueprint(auth)
+app.register_blueprint(chat)
 
 
-# -------------------- MODELS --------------------
-
-class Users(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100))
-    email = db.Column(db.String(100), unique=True)
-    password = db.Column(db.String(100))
-    is_online = db.Column(db.Boolean, default=False, nullable=False)
-
-    def __init__(self, name, email, password):
-        self.name = name
-        self.email = email
-        self.password = password
-
-
-class Messages(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    sender = db.Column(db.String(100))
-    receiver = db.Column(db.String(100))
-    message = db.Column(db.Text)
-    timestamp = db.Column(db.DateTime, default=lambda: datetime.now())
-    is_read = db.Column(db.Boolean, default=False, nullable=False)
-
-    def __init__(self, sender, receiver, message):
-        self.sender = sender
-        self.receiver = receiver
-        self.message = message
-
-
-# -------------------- ROUTES --------------------
-
-
-@app.route('/register', methods=["GET", "POST"])
-def register():
-    if request.method == "POST":
-        name = request.form["nm"]
-        email = request.form["email"]
-        password = request.form["password"]
-        repeat_password = request.form["repeat_password"]
-
-        if password != repeat_password:
-            flash("Passwords do not match!", "danger")
-            return redirect(url_for('register'))
-
-        existing_user = Users.query.filter_by(email=email).first()
-        if existing_user:
-            flash("Email already registered!", "warning")
-            return redirect(url_for('register'))
-        hash_pwd = generate_password_hash(password)
-        new_user = Users(name, email, hash_pwd)
-        db.session.add(new_user)
-        db.session.commit()
-        flash("Registration successful! Please login.", "success")
-        return redirect(url_for('login'))
-
-    return render_template("register.html")
-
-
-@app.route('/', methods=["GET", "POST"])
-@app.route('/login', methods=['POST', 'GET'])
-def login():
-    if request.method == 'POST':
-        
-        email = request.form["email"]
-        password = request.form["password"]
-    
-        existing_user = Users.query.filter_by(email=email).first()
-
-        if not existing_user:
-            flash("Mail ID wrong!", "warning")
-            return redirect(url_for('login'))
-        else:
-            if check_password_hash(existing_user.password, password):
-                # Set user as online
-                existing_user.is_online = True
-                db.session.commit()
-                
-                session["user"] = existing_user.name
-                session["user_id"] = existing_user.id
-                flash("Login successful!", "success")
-                return redirect(url_for('home'))
-            else:
-                flash("Incorrect password!", "danger")
-
-    return render_template('login.html')
-
-
-@app.route('/home')
-def home():
-    if "user" not in session:
-        flash("Please login first!", "danger")
-        return redirect(url_for('login'))
-
-    existing_user = session.get("user")
-    user_id = session.get("user_id")
-    users = Users.query.filter(Users.name != existing_user).all()
-    
-    # Get unread message counts for each user
-    users_with_unread = []
-    for user in users:
-        unread_count = Messages.query.filter_by(
-            sender=str(user.id),
-            receiver=str(user_id),
-            is_read=False
-        ).count()
-        users_with_unread.append({
-            'id': user.id,
-            'name': user.name,
-            'is_online': user.is_online,
-            'unread_count': unread_count
-        })
-    
-    return render_template('home.html', users=users_with_unread)
-
-
-@app.route('/logout')
-def logout():
-    user_id = session.get("user_id")
-    if user_id:
-        user = Users.query.get(user_id)
-        if user:
-            user.is_online = False
-            db.session.commit()
-    
-    session.pop("user", None)
-    session.pop("user_id", None)
-    flash("Logged out successfully!", "success")
-    return redirect(url_for('login'))
-
-
-@app.route('/delete_user')
-def delete_user():
-    username = session.get("user")
-    if not username:
-        flash("You must be logged in to delete your account.", "danger")
-        return redirect(url_for('login'))
-
-    user = Users.query.filter_by(name=username).first()
-
-    if user:
-        Messages.query.filter(
-            (Messages.sender == user.id) | (Messages.receiver == user.id)
-        ).delete()
-
-        db.session.delete(user)
-        db.session.commit()
-
-        session.pop("user", None)
-        flash("Your account and all your messages have been deleted.", "info")
-        return redirect(url_for('register'))
-    else:
-        flash("User not found!", "warning")
-        return redirect(url_for('login'))
-
-
-@app.route('/get_messages/<int:receiver_id>')
-def get_messages(receiver_id):
-    user_id = session.get("user_id")
-    
-    messages = Messages.query.filter(
-        ((Messages.sender == str(user_id)) & (Messages.receiver == str(receiver_id))) |
-        ((Messages.sender == str(receiver_id)) & (Messages.receiver == str(user_id)))
-    ).order_by(Messages.timestamp.asc()).all()
-    
-    # Mark messages from this sender as read
-    Messages.query.filter_by(
-        sender=str(receiver_id),
-        receiver=str(user_id),
-        is_read=False
-    ).update({'is_read': True})
-    db.session.commit()
-    
-    return {
-        "messages": [{'sender': m.sender, 'message': m.message, 'timestamp': m.timestamp.strftime('%H:%M')} for m in messages],
-        "current_user": str(user_id)
-    }
-
-
-@app.route('/check_status/<int:user_id>')
-def check_status(user_id):
-    user = Users.query.get(user_id)
-    if user:
-        return jsonify({"is_online": user.is_online})
-    return jsonify({"is_online": False})
-
-
-@app.route('/get_unread_count/<int:sender_id>')
-def get_unread_count(sender_id):
-    user_id = session.get("user_id")
-    count = Messages.query.filter_by(
-        sender=str(sender_id),
-        receiver=str(user_id),
-        is_read=False
-    ).count()
-    return jsonify({"unread_count": count})
-
-
-# -------------------- SOCKET EVENTS --------------------
-
+# Socket events
 @socketio.on('connect')
 def handle_connect():
     if "user" in session:
@@ -222,7 +31,6 @@ def handle_connect():
         if user:
             user.is_online = True
             db.session.commit()
-            # Broadcast online status to all users
             emit('user_status', {'user_id': user_id, 'is_online': True}, broadcast=True)
         print(f'{session["user"]} connected')
 
@@ -235,7 +43,6 @@ def handle_disconnect():
         if user:
             user.is_online = False
             db.session.commit()
-            # Broadcast offline status to all users
             emit('user_status', {'user_id': user_id, 'is_online': False}, broadcast=True)
         print(f'{session["user"]} disconnected')
 
@@ -243,39 +50,40 @@ def handle_disconnect():
 @socketio.on('join')
 def handle_join(data):
     join_room(str(session['user_id']))
+    print(f'User {session["user"]} joined room {session["user_id"]}')
 
 
 @socketio.on('message')
 def handle_message(data):
-    userid = session.get("user_id")
-    print(userid)
-    reciever = data['reciever']
+    userid = str(session.get("user_id"))
+    receiver = str(data['reciever'])
     message_text = data['message']
     
-    new_message = Messages(userid, reciever, message_text)
+    new_message = Messages(userid, receiver, message_text)
     db.session.add(new_message)
     db.session.commit()
-    room = str(session['user_id'])
     
+    # Send to sender's room
     socketio.send({
         'sender': userid,
         'message': message_text,
-        'reciever': reciever,
+        'reciever': receiver,
         'timestamp': new_message.timestamp.strftime('%H:%M')
-    }, to=room)
+    }, to=userid)
     
+    # Send to receiver's room
     socketio.send({
         'sender': userid,
         'message': message_text,
-        'reciever': reciever,
+        'reciever': receiver,
         'timestamp': new_message.timestamp.strftime('%H:%M')
-    }, to=str(reciever))
+    }, to=receiver)
     
-    # Emit unread count update to receiver
+    # Notify receiver about unread message
     socketio.emit('unread_update', {
         'sender_id': userid,
-        'receiver_id': reciever
-    }, to=str(reciever))
+        'receiver_id': receiver
+    }, to=receiver)
 
 
 @socketio.on('mark_read')
@@ -283,7 +91,6 @@ def handle_mark_read(data):
     user_id = session.get("user_id")
     sender_id = data.get('sender_id')
     
-    # Mark all messages from sender as read
     Messages.query.filter_by(
         sender=str(sender_id),
         receiver=str(user_id),
@@ -291,8 +98,6 @@ def handle_mark_read(data):
     ).update({'is_read': True})
     db.session.commit()
 
-
-# -------------------- MAIN --------------------
 
 if __name__ == '__main__':
     with app.app_context():
